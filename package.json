@@ -1,0 +1,28 @@
+{
+  "name": "hornlesssplat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 1 browser Gaussian Splat virtual set viewer driven by external pose packets.",
+  "scripts": {
+    "dev": "concurrently -k -n pose,web -c cyan,magenta \"npm:dev:pose\" \"npm:dev:web\"",
+    "dev:web": "vite --host 127.0.0.1",
+    "dev:pose": "tsx watch server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@mkkellogg/gaussian-splats-3d": "^0.4.7",
+    "three": "^0.184.0",
+    "ws": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@types/three": "^0.184.0",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
+  }
+}

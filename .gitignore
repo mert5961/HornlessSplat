@@ -1,0 +1,14 @@
+node_modules/
+dist/
+
+.DS_Store
+.idea/
+.vscode/
+
+*.log
+
+# Android/Gradle outputs
+.gradle/
+build/
+**/build/
+local.properties
