@@ -43,7 +43,8 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
     private var viewportWidth = 1
     private var viewportHeight = 1
     private var cameraTextureId = -1
-    private var lastSendNs = 0L
+    private var lastFrameTimestampNs = 0L
+    private var displayRotation = 0
     private var lastTrackingUiNs = 0L
     private var packetsSent = 0L
     private var lastTrackingState = "UNKNOWN"
@@ -221,7 +222,8 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
         val session = arSession ?: return
 
         if (viewportChanged) {
-            session.setDisplayGeometry(windowManager.defaultDisplay.rotation, viewportWidth, viewportHeight)
+            displayRotation = windowManager.defaultDisplay.rotation
+            session.setDisplayGeometry(displayRotation, viewportWidth, viewportHeight)
             viewportChanged = false
         }
 
@@ -230,7 +232,9 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
             backgroundRenderer.draw()
 
             val camera = frame.camera
-            val pose = camera.pose
+            // Display-oriented pose matches what the operator sees on screen; the raw camera pose
+            // is in the sensor's landscape orientation and would be rolled 90 degrees in portrait.
+            val pose = camera.displayOrientedPose
             val quaternion = pose.rotationQuaternion
             val trackingState = camera.trackingState
             val nowNs = System.nanoTime()
@@ -243,11 +247,20 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
                 }
             }
 
-            if (nowNs - lastSendNs >= 16_000_000L) {
-                lastSendNs = nowNs
+            // session.update() can return the same camera frame again; only send new frames.
+            val frameTimestampNs = frame.timestamp
+            if (frameTimestampNs != 0L && frameTimestampNs != lastFrameTimestampNs) {
+                lastFrameTimestampNs = frameTimestampNs
+                val intrinsics = camera.textureIntrinsics
+                val focalLength = intrinsics.focalLength
+                val principalPoint = intrinsics.principalPoint
+                val imageDimensions = intrinsics.imageDimensions
+                val serverNowMs = webSocketClient.serverTimeMs()
                 webSocketClient.send(
                     buildPosePacket(
-                        timestamp = System.currentTimeMillis(),
+                        timestamp = serverNowMs ?: System.currentTimeMillis(),
+                        clockSynced = serverNowMs != null,
+                        frameTimestampNs = frameTimestampNs,
                         tx = pose.tx(),
                         ty = pose.ty(),
                         tz = pose.tz(),
@@ -255,7 +268,14 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
                         qy = quaternion[1],
                         qz = quaternion[2],
                         qw = quaternion[3],
-                        trackingState = trackingState.name
+                        trackingState = trackingState.name,
+                        fx = focalLength[0],
+                        fy = focalLength[1],
+                        cx = principalPoint[0],
+                        cy = principalPoint[1],
+                        imageWidth = imageDimensions[0],
+                        imageHeight = imageDimensions[1],
+                        displayRotation = displayRotation
                     )
                 )
             }
@@ -300,7 +320,9 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
 
     private fun buildTestPosePacket(): String {
         return buildPosePacket(
-            timestamp = System.currentTimeMillis(),
+            timestamp = webSocketClient.serverTimeMs() ?: System.currentTimeMillis(),
+            clockSynced = webSocketClient.serverTimeMs() != null,
+            frameTimestampNs = 0L,
             tx = 0f,
             ty = 0f,
             tz = 0f,
@@ -308,12 +330,21 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
             qy = 0f,
             qz = 0f,
             qw = 1f,
-            trackingState = "TRACKING"
+            trackingState = "TRACKING",
+            fx = 0f,
+            fy = 0f,
+            cx = 0f,
+            cy = 0f,
+            imageWidth = 0,
+            imageHeight = 0,
+            displayRotation = displayRotation
         )
     }
 
     private fun buildPosePacket(
         timestamp: Long,
+        clockSynced: Boolean,
+        frameTimestampNs: Long,
         tx: Float,
         ty: Float,
         tz: Float,
@@ -321,7 +352,14 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
         qy: Float,
         qz: Float,
         qw: Float,
-        trackingState: String
+        trackingState: String,
+        fx: Float,
+        fy: Float,
+        cx: Float,
+        cy: Float,
+        imageWidth: Int,
+        imageHeight: Int,
+        displayRotation: Int
     ): String {
         return String.format(
             Locale.US,
@@ -329,6 +367,8 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
                 {
                   "source": "android-arcore",
                   "timestamp": %d,
+                  "clockSynced": %b,
+                  "frameTimestampNs": %d,
                   "position": {
                     "x": %.6f,
                     "y": %.6f,
@@ -340,10 +380,21 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
                     "qz": %.6f,
                     "qw": %.6f
                   },
-                  "trackingState": "%s"
+                  "trackingState": "%s",
+                  "intrinsics": {
+                    "fx": %.3f,
+                    "fy": %.3f,
+                    "cx": %.3f,
+                    "cy": %.3f,
+                    "width": %d,
+                    "height": %d
+                  },
+                  "displayRotation": %d
                 }
             """.trimIndent(),
             timestamp,
+            clockSynced,
+            frameTimestampNs,
             tx,
             ty,
             tz,
@@ -351,7 +402,14 @@ class MainActivity : Activity(), GLSurfaceView.Renderer {
             qy,
             qz,
             qw,
-            trackingState
+            trackingState,
+            fx,
+            fy,
+            cx,
+            cy,
+            imageWidth,
+            imageHeight,
+            displayRotation
         )
     }
 

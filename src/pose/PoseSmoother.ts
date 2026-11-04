@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { PosePacket } from '../types/pose';
 
 export class PoseSmoother {
@@ -5,6 +6,8 @@ export class PoseSmoother {
   private current?: PosePacket;
   private enabled = true;
   private strength = 0.45;
+  private readonly fromQuaternion = new THREE.Quaternion();
+  private readonly toQuaternion = new THREE.Quaternion();
 
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
@@ -36,45 +39,33 @@ export class PoseSmoother {
       return this.current;
     }
 
+    // Frame-rate independent exponential smoothing.
     const response = 32 - this.strength * 28;
     const alpha = 1 - Math.exp(-deltaSeconds * response);
-    this.current = interpolatePose(this.current, this.target, alpha);
+    this.current = this.interpolatePose(this.current, this.target, alpha);
 
     return this.current;
   }
-}
 
-function interpolatePose(from: PosePacket, to: PosePacket, alpha: number): PosePacket {
-  return {
-    timestamp: to.timestamp,
-    position: {
-      x: lerp(from.position.x, to.position.x, alpha),
-      y: lerp(from.position.y, to.position.y, alpha),
-      z: lerp(from.position.z, to.position.z, alpha)
-    },
-    rotation: {
-      yaw: lerpAngle(from.rotation.yaw, to.rotation.yaw, alpha),
-      pitch: lerpAngle(from.rotation.pitch, to.rotation.pitch, alpha),
-      roll: lerpAngle(from.rotation.roll, to.rotation.roll, alpha)
-    },
-    fov: lerp(from.fov, to.fov, alpha)
-  };
+  private interpolatePose(from: PosePacket, to: PosePacket, alpha: number): PosePacket {
+    // slerp takes the shortest arc, so there is no angle wrap-around to handle.
+    const rotation = this.fromQuaternion
+      .set(from.rotation.x, from.rotation.y, from.rotation.z, from.rotation.w)
+      .slerp(this.toQuaternion.set(to.rotation.x, to.rotation.y, to.rotation.z, to.rotation.w), alpha);
+
+    return {
+      ...to,
+      position: {
+        x: lerp(from.position.x, to.position.x, alpha),
+        y: lerp(from.position.y, to.position.y, alpha),
+        z: lerp(from.position.z, to.position.z, alpha)
+      },
+      rotation: { x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w },
+      fov: lerp(from.fov, to.fov, alpha)
+    };
+  }
 }
 
 function lerp(from: number, to: number, alpha: number) {
   return from + (to - from) * alpha;
-}
-
-function lerpAngle(from: number, to: number, alpha: number) {
-  let delta = to - from;
-
-  while (delta > Math.PI) {
-    delta -= Math.PI * 2;
-  }
-
-  while (delta < -Math.PI) {
-    delta += Math.PI * 2;
-  }
-
-  return from + delta * alpha;
 }

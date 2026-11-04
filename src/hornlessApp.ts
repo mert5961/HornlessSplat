@@ -262,7 +262,10 @@ function tick(nowMs: number) {
       displayMode,
       rawPose: lastRawPose,
       calibratedPose: lastCalibratedPose,
-      cameraPose: lastCameraPose
+      cameraPose: lastCameraPose,
+      // Assumes the browser runs on the same machine as the pose server (shared Date.now() clock).
+      poseAgeMs: lastRawPose ? Date.now() - lastRawPose.timestamp : undefined,
+      basisValid: calibration.isBasisValid()
     });
   }
 

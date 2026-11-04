@@ -1,4 +1,5 @@
-import type { ConnectionStatus, PosePacket } from '../types/pose';
+import * as THREE from 'three';
+import type { ConnectionStatus, PosePacket, QuaternionPacket } from '../types/pose';
 import { displayModeLabels, type DisplayMode } from '../video/displayModes';
 
 export type DebugOverlayState = {
@@ -15,6 +16,9 @@ export type DebugOverlayState = {
   rawPose?: PosePacket;
   calibratedPose?: PosePacket;
   cameraPose?: PosePacket;
+  /** Time from pose capture to now, when the pose timestamp is in this machine's clock domain. */
+  poseAgeMs?: number;
+  basisValid: boolean;
 };
 
 export class DebugOverlay {
@@ -55,8 +59,11 @@ export class DebugOverlay {
         <dt>cal pos</dt><dd>${formatVec(calibratedPose?.position)}</dd>
         <dt>cal rot</dt><dd>${formatRot(calibratedPose?.rotation)}</dd>
         <dt>cam pos</dt><dd>${formatVec(cameraPose?.position)}</dd>
+        <dt>cam rot</dt><dd>${formatRot(cameraPose?.rotation)}</dd>
         <dt>fov</dt><dd>${cameraPose ? cameraPose.fov.toFixed(1) : '--'}</dd>
         <dt>timestamp</dt><dd>${timestamp}</dd>
+        <dt>pose age</dt><dd>${formatPoseAge(state.poseAgeMs, rawPose)}</dd>
+        ${state.basisValid ? '' : '<dt>warning</dt><dd>axis remap repeats an axis; rotation not remapped</dd>'}
       </dl>
     `;
   }
@@ -87,10 +94,29 @@ function formatVec(value?: { x: number; y: number; z: number }) {
   return `${value.x.toFixed(2)} ${value.y.toFixed(2)} ${value.z.toFixed(2)}`;
 }
 
-function formatRot(value?: { yaw: number; pitch: number; roll: number }) {
+const scratchEuler = new THREE.Euler();
+const scratchQuaternion = new THREE.Quaternion();
+
+/** Yaw / pitch / roll in degrees (YXZ), for display only. */
+function formatRot(value?: QuaternionPacket) {
   if (!value) {
     return '--';
   }
 
-  return `${value.yaw.toFixed(3)} ${value.pitch.toFixed(3)} ${value.roll.toFixed(3)}`;
+  scratchEuler.setFromQuaternion(scratchQuaternion.set(value.x, value.y, value.z, value.w), 'YXZ');
+  const toDegrees = THREE.MathUtils.radToDeg;
+
+  return `${toDegrees(scratchEuler.y).toFixed(1)}° ${toDegrees(scratchEuler.x).toFixed(1)}° ${toDegrees(scratchEuler.z).toFixed(1)}°`;
+}
+
+function formatPoseAge(poseAgeMs: number | undefined, rawPose?: PosePacket) {
+  if (!rawPose) {
+    return '--';
+  }
+
+  if (!rawPose.clockSynced || poseAgeMs === undefined) {
+    return 'clock not synced';
+  }
+
+  return `${poseAgeMs.toFixed(0)} ms`;
 }

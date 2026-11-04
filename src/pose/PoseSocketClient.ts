@@ -5,6 +5,7 @@ export type PoseServerState = {
   activeSource: PoseSource;
   androidTrackingState: string;
   androidConnected: boolean;
+  androidClockSynced?: boolean;
 };
 
 export type PoseSocketClientOptions = {
@@ -112,9 +113,10 @@ export class PoseSocketClient {
         typeof packet.position?.x === 'number' &&
         typeof packet.position?.y === 'number' &&
         typeof packet.position?.z === 'number' &&
-        typeof packet.rotation?.yaw === 'number' &&
-        typeof packet.rotation?.pitch === 'number' &&
-        typeof packet.rotation?.roll === 'number' &&
+        typeof packet.rotation?.x === 'number' &&
+        typeof packet.rotation?.y === 'number' &&
+        typeof packet.rotation?.z === 'number' &&
+        typeof packet.rotation?.w === 'number' &&
         typeof packet.fov === 'number'
       ) {
         return packet;

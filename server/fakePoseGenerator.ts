@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { PosePacket } from './poseTypes';
 
 export type FakePoseOptions = {
@@ -6,6 +7,8 @@ export type FakePoseOptions = {
 
 export class FakePoseGenerator {
   private readonly startTimeMs: number;
+  private readonly euler = new THREE.Euler(0, 0, 0, 'YXZ');
+  private readonly quaternion = new THREE.Quaternion();
 
   constructor(options: FakePoseOptions = {}) {
     this.startTimeMs = options.startTimeMs ?? Date.now();
@@ -26,14 +29,21 @@ export class FakePoseGenerator {
       z: -position.z
     });
 
+    const yaw = Math.atan2(-direction.x, -direction.z);
+    const pitch = Math.asin(direction.y);
+    const roll = Math.sin(elapsedSeconds * 0.7) * 0.035;
+    this.quaternion.setFromEuler(this.euler.set(pitch, yaw, roll, 'YXZ'));
+
     return {
       source: 'fake',
       timestamp: nowMs,
+      clockSynced: true,
       position,
       rotation: {
-        yaw: Math.atan2(-direction.x, -direction.z),
-        pitch: Math.asin(direction.y),
-        roll: Math.sin(elapsedSeconds * 0.7) * 0.035
+        x: this.quaternion.x,
+        y: this.quaternion.y,
+        z: this.quaternion.z,
+        w: this.quaternion.w
       },
       fov: 58 + Math.sin(elapsedSeconds * 0.5) * 5
     };
